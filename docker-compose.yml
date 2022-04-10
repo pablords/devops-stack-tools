@@ -1,0 +1,86 @@
+version: '3.6'
+
+services:
+
+  nexus:
+    container_name: nexus
+    image: sonatype/nexus3:3.37.3
+    ports:
+      - 8081:8081
+      - 5000-5010:5000-5010
+    restart: always
+    networks:
+      - devops
+    volumes:
+      - ./nexus/data:/nexus-data
+    labels:
+      - traefik.port=8081
+      - traefik.http.routers.nexus.rule=Host(`devops-dev.ddns.net`)
+      - traefik.enable=true
+      - traefik.http.routers.nexus.entrypoints=websecure
+      - traefik.http.routers.nexus.tls=true
+      - traefik.http.routers.nexus.tls.certresolver=myresolver
+
+  sonarqube:
+    container_name: sonarqube
+    image: sonarqube:lts-community
+    restart: always
+    ports:
+      - 8082:9000
+    networks:
+      - devops
+    volumes:
+      - ./sonarqube/data:/opt/sonarqube/data
+      - ./sonarqube/data/logs:/opt/sonarqube/logs
+      - ./sonarqube/data/extensions:/opt/sonarqube/extensions
+  
+  vault:
+    container_name: vault
+    restart: always
+    image: vault:1.9.2
+    ports:
+      - 8083:8200
+    networks:
+      - devops
+    volumes:
+      - ./vault/data/logs:/vault/logs
+      - ./vault/data/file:/vault/file
+      - ./vault/data/config:/vault/config
+      - ./vault/config.json:/vault/config/config.json
+    cap_add:
+      - IPC_LOCK
+    environment:
+      - VAULT_ADDR=http://0.0.0.0:8200
+      - VAULT_API_ADDR=http://0.0.0.0:8200
+      - VAULT_ADDRESS=http://0.0.0.0:8200
+    command: vault server -config=/vault/config/config.json
+
+  traefik:
+    image: traefik:v2.2
+    container_name: traefik
+    restart: always
+    command:
+      - "--log.level=DEBUG"
+      - "--api.insecure=true"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--entrypoints.web.http.redirections.entryPoint.to=websecure"
+      - "--entrypoints.web.http.redirections.entryPoint.scheme=https"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge=true"
+      - "--certificatesresolvers.myresolver.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.myresolver.acme.email=pablords@gmail.com"
+      - "--certificatesresolvers.myresolver.acme.storage=/letsencrypt/acme.json"
+    ports:
+      - 80:80
+      - 443:443
+    networks:
+      - devops
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - "/docker/letsencrypt:/letsencrypt"
+
+
+networks:
+    devops: null
